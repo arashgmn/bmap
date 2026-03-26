@@ -62,8 +62,9 @@
  * Replace this URL with your "Published as CSV" Google Sheets link
  */
 const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vStpH3qNGQTR1agTeF7Ju68orKluNh-DnHlMcJeDbx1Go8ho-fF848ZpnQ-pHbI22mYjSgybCWkKBT9/pub?output=csv';
-const UPDATE_INTERVAL = 30000; // 30 seconds
-const WINDOW_SIZE_MINS = 10;
+//const UPDATE_INTERVAL = 30000; // 30 seconds
+const UPDATE_INTERVAL = 30; // 30 seconds
+const WINDOW_SIZE_MINS = 600;
 
 // State Management
 let events = [];
@@ -189,17 +190,17 @@ function createCone(start, end, color, opacity) {
 
 function render() {
     eventLayer.clearLayers();
-    const windowMs = WINDOW_SIZE_MINS * 60 * 1000;
+    const windowS = WINDOW_SIZE_MINS * 60 ;
     
     document.getElementById('current-time-display').innerText = `View: ${new Date(parseInt(currentT)).toLocaleTimeString()}`;
 
     events.forEach(ev => {
-        const deltaT = currentT - ev.timestamp;
+        const deltaT = (currentT - ev.timestamp)*1000;  // In seconds
         
         // Filtering: [t - 10m, t]
-        if (deltaT >= 0 && deltaT <= windowMs) {
+        if (deltaT >= 0 && deltaT <= windowS) {
             // Calculate Opacity: 1 at 0ms, 0 at 10mins
-            const opacity = 1 - (deltaT / windowMs);
+            const opacity = 1 - (deltaT / windowS);
             const { color, radius } = getEventStyles(ev);
 
             // Draw Circle

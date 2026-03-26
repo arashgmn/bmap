@@ -227,8 +227,12 @@ function render() {
     eventLayer.clearLayers();
     const windowS = WINDOW_SIZE_MINS * 60 ;
     
-    document.getElementById('current-time-display').innerText = `View: ${new Date(parseInt(currentT)).toLocaleTimeString()}`;
+    const displayDate = new Date(parseInt(currentT));
+    // document.getElementById('current-time-display').innerText = `View: ${new Date(parseInt(currentT)).toLocaleTimeString()}`;
+    document.getElementById('current-timestamp-ui').innerText = 
+        displayDate.toLocaleDateString() + ' ' + displayDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 
+    
     events.forEach(ev => {
         const deltaT = (currentT - ev.timestamp)*1000;  // In seconds
         

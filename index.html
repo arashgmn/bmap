@@ -22,7 +22,7 @@
         }
 
         #time-slider { width: 100%; cursor: pointer; }
-
+        
         .legend {
             position: absolute; top: 20px; right: 20px; z-index: 1000;
             background: white; padding: 15px; border-radius: 5px; font-size: 12px;
@@ -101,7 +101,10 @@ function processData(rawData) {
         const end = row.end_location ? parseCoords(row.end_location) : null;
         
         // Combine Date + Time
-        const timestamp = new Date(`${row.date} ${row.time}`).getTime();
+        // const timestamp = new Date(`${row.date} ${row.time}`).getTime();
+        const dateStr = `${row.date}`.trim();
+        const timeStr = `${row.time}`.trim();
+        const timestamp = new Date(`${dateStr}T${timeStr}:00`).getTime();
 
         return {
             ...row,
@@ -157,27 +160,59 @@ function getEventStyles(event) {
     return { color, radius };
 }
 
+// /**
+//  * Renders directional cone using an SVG Polygon
+//  * Uses math to calculate bearing between start and end coordinates
+//  */
+// function createCone(start, end, color, opacity) {
+//     const angle = 45; // Degrees
+//     const length = window.innerWidth * 0.05; // 5% screen width
+    
+//     // Calculate bearing in degrees
+//     const bearing = (Math.atan2(end[1] - start[1], end[0] - start[0]) * 180 / Math.PI);
+    
+//     // We use a simple CSS transform/rotation on a triangle for performance
+//     const svgIcon = L.divIcon({
+//         className: 'cone-icon',
+//         html: `<div style="
+//             width: 0; height: 0; 
+//             border-left: ${length/2}px solid transparent;
+//             border-right: ${length/2}px solid transparent;
+//             border-bottom: ${length}px solid ${color};
+//             opacity: ${opacity};
+//             transform: rotate(${bearing + 90}deg);
+//             transform-origin: 50% 0%;
+//             mask-image: linear-gradient(to top, rgba(0,0,0,0), rgba(0,0,0,1));
+//             -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0), rgba(0,0,0,1));
+//         "></div>`,
+//         iconSize: [0, 0]
+//     });
+
+//     return L.marker(start, { icon: svgIcon });
+// }
 /**
- * Renders directional cone using an SVG Polygon
- * Uses math to calculate bearing between start and end coordinates
+ * BUG FIX: Cone Rendering
+ * The tip (acute angle) is placed at start_location using transform-origin.
+ * Math.atan2 is used to calculate the bearing from start to end.
  */
 function createCone(start, end, color, opacity) {
-    const angle = 45; // Degrees
-    const length = window.innerWidth * 0.05; // 5% screen width
+    const length = window.innerWidth * 0.05; 
+    const width = length * 0.4; // Controls how "acute" the angle is
+
+    // Calculate bearing: atan2(dLongitude, dLatitude)
+    const bearing = Math.atan2(end[1] - start[1], end[0] - start[0]) * 180 / Math.PI;
     
-    // Calculate bearing in degrees
-    const bearing = (Math.atan2(end[1] - start[1], end[0] - start[0]) * 180 / Math.PI);
-    
-    // We use a simple CSS transform/rotation on a triangle for performance
-    const svgIcon = L.divIcon({
-        className: 'cone-icon',
+    // CSS Triangle: border-bottom creates a point-up triangle.
+    // transform-origin: 50% 0% ensures the point (the tip) stays at the coordinates.
+    const icon = L.divIcon({
+        className: 'cone-container',
         html: `<div style="
-            width: 0; height: 0; 
-            border-left: ${length/2}px solid transparent;
-            border-right: ${length/2}px solid transparent;
+            width: 0; height: 0;
+            border-left: ${width/2}px solid transparent;
+            border-right: ${width/2}px solid transparent;
             border-bottom: ${length}px solid ${color};
             opacity: ${opacity};
-            transform: rotate(${bearing + 90}deg);
+            transform: translate(-50%, 0) rotate(${90 - bearing}deg);
             transform-origin: 50% 0%;
             mask-image: linear-gradient(to top, rgba(0,0,0,0), rgba(0,0,0,1));
             -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0), rgba(0,0,0,1));
@@ -185,7 +220,7 @@ function createCone(start, end, color, opacity) {
         iconSize: [0, 0]
     });
 
-    return L.marker(start, { icon: svgIcon });
+    return L.marker(start, { icon, interactive: false });
 }
 
 function render() {

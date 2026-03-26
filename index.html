@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Event Map</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
+        #map { height: 100vh; width: 100vw; background: #222; }
+
+        /* UI Overlay */
+        .controls {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            z-index: 1000; width: 80%; max-width: 600px;
+            background: rgba(255, 255, 255, 0.9); padding: 20px;
+            border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+
+        #time-slider { width: 100%; cursor: pointer; }
+
+        .legend {
+            position: absolute; top: 20px; right: 20px; z-index: 1000;
+            background: white; padding: 15px; border-radius: 5px; font-size: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2); line-height: 1.6;
+        }
+
+        .legend-item { display: flex; align-items: center; margin-bottom: 5px; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }
+        
+        .status { margin-top: 10px; font-weight: bold; color: #555; }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="legend">
+    <strong>Legend</strong>
+    <div class="legend-item"><div class="dot" style="background: red"></div> Has Exp</div>
+    <div class="legend-item"><div class="dot" style="background: green"></div> Is Pad</div>
+    <div class="legend-item"><div class="dot" style="background: blue"></div> Default</div>
+    <hr>
+    <strong>Intensity (Size)</strong>
+    <div>Low | Mid | High</div>
+    <hr>
+    <div id="current-time-display">Time: --:--</div>
+    <div id="max-time-display" style="font-size: 10px; color: #888;">Latest: --:--</div>
+</div>
+
+<div class="controls">
+    <input type="range" id="time-slider" min="0" max="100" value="0">
+    <div class="status" id="slider-label">Loading data...</div>
+</div>
+
+<script>
+/** * CONFIGURATION
+ * Replace this URL with your "Published as CSV" Google Sheets link
+ */
+const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vStpH3qNGQTR1agTeF7Ju68orKluNh-DnHlMcJeDbx1Go8ho-fF848ZpnQ-pHbI22mYjSgybCWkKBT9/pub?output=csv';
+const UPDATE_INTERVAL = 30000; // 30 seconds
+const WINDOW_SIZE_MINS = 10;
+
+// State Management
+let events = [];
+let map, eventLayer;
+let currentT = 0; 
+
+// Initialize Map
+function initMap() {
+    map = L.map('map', { zoomControl: false }).setView([0, 0], 2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+    }).addTo(map);
+    
+    eventLayer = L.layerGroup().addTo(map);
+    L.control.zoom({ position: 'topleft' }).addTo(map);
+}
+
+// Fetch and Parse Data
+async function fetchData() {
+    Papa.parse(SHEET_URL, {
+        download: true,
+        header: true,
+        dynamicTyping: true,
+        complete: function(results) {
+            processData(results.data);
+        }
+    });
+}
+
+function processData(rawData) {
+    const newEvents = rawData.map(row => {
+        // Handle coordinates: expects "lat, lng" or separate columns
+        const start = parseCoords(row.start_location);
+        const end = row.end_location ? parseCoords(row.end_location) : null;
+        
+        // Combine Date + Time
+        const timestamp = new Date(`${row.date} ${row.time}`).getTime();
+
+        return {
+            ...row,
+            timestamp,
+            start,
+            end,
+            has_exp: String(row.has_exp).toLowerCase() === 'true',
+            is_pad: String(row.is_pad).toLowerCase() === 'true'
+        };
+    }).filter(e => !isNaN(e.timestamp) && e.start);
+
+    events = newEvents.sort((a, b) => a.timestamp - b.timestamp);
+    
+    if (events.length > 0) {
+        updateSliderRange();
+        render();
+    }
+}
+
+function parseCoords(str) {
+    if (!str) return null;
+    const parts = str.split(',').map(Number);
+    return parts.length === 2 ? parts : null; 
+}
+
+function updateSliderRange() {
+    const slider = document.getElementById('time-slider');
+    const min = events[0].timestamp;
+    const max = events[events.length - 1].timestamp;
+    
+    slider.min = min;
+    slider.max = max;
+    
+    // Auto-advance slider if it's at the end or first load
+    if (currentT === 0 || currentT >= slider.max - UPDATE_INTERVAL) {
+        currentT = max;
+        slider.value = max;
+    }
+    
+    document.getElementById('max-time-display').innerText = `Latest: ${new Date(max).toLocaleString()}`;
+}
+
+// Visual Logic
+function getEventStyles(event) {
+    let color = 'blue';
+    if (event.has_exp) color = 'red';
+    else if (event.is_pad) color = 'green';
+
+    let radius = 5;
+    if (event.intensity === 'mid') radius = 10;
+    if (event.intensity === 'high') radius = 15;
+
+    return { color, radius };
+}
+
+/**
+ * Renders directional cone using an SVG Polygon
+ * Uses math to calculate bearing between start and end coordinates
+ */
+function createCone(start, end, color, opacity) {
+    const angle = 45; // Degrees
+    const length = window.innerWidth * 0.05; // 5% screen width
+    
+    // Calculate bearing in degrees
+    const bearing = (Math.atan2(end[1] - start[1], end[0] - start[0]) * 180 / Math.PI);
+    
+    // We use a simple CSS transform/rotation on a triangle for performance
+    const svgIcon = L.divIcon({
+        className: 'cone-icon',
+        html: `<div style="
+            width: 0; height: 0; 
+            border-left: ${length/2}px solid transparent;
+            border-right: ${length/2}px solid transparent;
+            border-bottom: ${length}px solid ${color};
+            opacity: ${opacity};
+            transform: rotate(${bearing + 90}deg);
+            transform-origin: 50% 0%;
+            mask-image: linear-gradient(to top, rgba(0,0,0,0), rgba(0,0,0,1));
+            -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0), rgba(0,0,0,1));
+        "></div>`,
+        iconSize: [0, 0]
+    });
+
+    return L.marker(start, { icon: svgIcon });
+}
+
+function render() {
+    eventLayer.clearLayers();
+    const windowMs = WINDOW_SIZE_MINS * 60 * 1000;
+    
+    document.getElementById('current-time-display').innerText = `View: ${new Date(parseInt(currentT)).toLocaleTimeString()}`;
+
+    events.forEach(ev => {
+        const deltaT = currentT - ev.timestamp;
+        
+        // Filtering: [t - 10m, t]
+        if (deltaT >= 0 && deltaT <= windowMs) {
+            // Calculate Opacity: 1 at 0ms, 0 at 10mins
+            const opacity = 1 - (deltaT / windowMs);
+            const { color, radius } = getEventStyles(ev);
+
+            // Draw Circle
+            L.circleMarker(ev.start, {
+                radius: radius,
+                fillColor: color,
+                color: color,
+                weight: 1,
+                fillOpacity: opacity,
+                opacity: opacity
+            }).addTo(eventLayer);
+
+            // Draw Cone
+            if (ev.end) {
+                const cone = createCone(ev.start, ev.end, color, opacity);
+                cone.addTo(eventLayer);
+            }
+        }
+    });
+}
+
+// Event Listeners
+document.getElementById('time-slider').addEventListener('input', (e) => {
+    currentT = parseInt(e.target.value);
+    render();
+});
+
+// Initialization
+initMap();
+fetchData();
+setInterval(fetchData, UPDATE_INTERVAL);
+
+</script>
+</body>
+</html>

@@ -41,13 +41,14 @@
 
 <div class="legend">
     <strong>Legend</strong>
-    <div class="legend-item"><div class="dot" style="background: red"></div> Has Exp</div>
-    <div class="legend-item"><div class="dot" style="background: green"></div> Is Pad</div>
-    <div class="legend-item"><div class="dot" style="background: blue"></div> Default</div>
+    <div class="legend-item"><div class="dot" style="background: rgb(229, 0, 0)"></div> Explosion</div>
+    <div class="legend-item"><div class="dot" style="background: rgb(255, 157, 0)"></div>Anti-missile</div>
+    <div class="legend-item"><div class="dot" style="background: rgb(255, 238, 0)"></div> No info</div>
     <hr>
     <strong>Intensity (Size)</strong>
     <div>Low | Mid | High</div>
     <hr>
+    <div id="current-date-display">Date: --,--,--</div>
     <div id="current-time-display">Time: --:--</div>
     <div id="max-time-display" style="font-size: 10px; color: #888;">Latest: --:--</div>
 </div>
@@ -62,8 +63,7 @@
  * Replace this URL with your "Published as CSV" Google Sheets link
  */
 const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vStpH3qNGQTR1agTeF7Ju68orKluNh-DnHlMcJeDbx1Go8ho-fF848ZpnQ-pHbI22mYjSgybCWkKBT9/pub?output=csv';
-//const UPDATE_INTERVAL = 30000; // 30 seconds
-const UPDATE_INTERVAL = 30; // 30 seconds
+const UPDATE_INTERVAL = 30000; // 30 seconds
 const WINDOW_SIZE_MINS = 600;
 
 // State Management
@@ -149,9 +149,9 @@ function updateSliderRange() {
 
 // Visual Logic
 function getEventStyles(event) {
-    let color = 'blue';
-    if (event.has_exp) color = 'red';
-    else if (event.is_pad) color = 'green';
+    let color = 'rgb(255, 238, 0)';
+    if (event.has_exp) color = 'rgb(229, 0, 0)';
+    else if (event.is_pad) color =  'rgb(255, 157, 0)';
 
     let radius = 5;
     if (event.intensity === 'mid') radius = 10;
@@ -227,14 +227,15 @@ function render() {
     eventLayer.clearLayers();
     const windowS = WINDOW_SIZE_MINS * 60 ;
     
-    const displayDate = new Date(parseInt(currentT));
-    // document.getElementById('current-time-display').innerText = `View: ${new Date(parseInt(currentT)).toLocaleTimeString()}`;
-    document.getElementById('current-timestamp-ui').innerText = 
-        displayDate.toLocaleDateString() + ' ' + displayDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    // const displayDate = new Date(parseInt(currentT));
+    document.getElementById('current-time-display').innerText = `Time: ${new Date(parseInt(currentT)).toLocaleTimeString()}`;
+    document.getElementById('current-date-display').innerText = `Date: ${new Date(parseInt(currentT)).toLocaleDateString()}`;
+    // document.getElementById('current-timestamp-ui').innerText = 
+    //     displayDate.toLocaleDateString() + ' ' + displayDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 
     
     events.forEach(ev => {
-        const deltaT = (currentT - ev.timestamp)*1000;  // In seconds
+        const deltaT = (currentT - ev.timestamp) / 1000;  // in seconds
         
         // Filtering: [t - 10m, t]
         if (deltaT >= 0 && deltaT <= windowS) {
